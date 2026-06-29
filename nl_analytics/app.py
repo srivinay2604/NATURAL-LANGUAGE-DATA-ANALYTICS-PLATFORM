@@ -4,6 +4,10 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
+# ── Fix working directory — ensures relative paths work whether run from
+#    repo root (Streamlit Cloud) or from nl_analytics/ folder (local) ──────────
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 # ── Page config must be first Streamlit call ──────────────────────────────────
 st.set_page_config(
     page_title="NL Analytics — Ask Your Data",
