@@ -1,0 +1,31 @@
+# Company Guidelines & Customer Segment Rules
+
+This document outlines the standard operational procedures for the sales organization, including region assignment rules, discount approval processes, and customer segment definitions.
+
+## 1. Sales Team Guidelines
+Sales representatives are responsible for establishing and maintaining client relationships within their designated territories. Reps must ensure all sales orders are accurately logged in the database, including product category, city, region, quantity, discount, and customer segment.
+
+## 2. Region Assignment Rules
+To avoid channel conflict, sales reps and customer accounts are strictly mapped to geographical regions based on their city:
+- **North Region**: Serves Delhi. Sales rep: Amit Sharma.
+- **South Region**: Serves Bangalore and Chennai. Sales reps: Priya Patel, Sneha Reddy.
+- **West Region**: Serves Mumbai and Pune. Sales reps: Rohan Verma, Vikram Singh.
+- **Central Region**: Serves Hyderabad. Sales rep: Ananya Sen.
+
+Any client located outside these cities must be assigned to the geographically nearest region and requires approval from the Regional Sales Director.
+
+## 3. Discount Approval Process
+As detailed in the Revenue Policy:
+1. **0% to 10% Discount**: Sales representative has full autonomy to apply this at checkout.
+2. **10.1% to 20% Discount**: Requires written approval from the Regional Sales Manager.
+3. **Over 20% Discount**: Considered exceptional. Requires approval from the Vice President of Sales.
+
+All discounts must be justified by bulk orders, customer loyalty milestones, or seasonal promotions.
+
+## 4. Customer Segment Definitions
+We classify our database into three primary segments:
+1. **Consumer**: Individual retail customers. Orders are generally smaller in volume but have higher unit margins.
+2. **Corporate**: Small-to-medium businesses and larger enterprises. These orders typically involve contract pricing, bulk quantities, and standardized payment terms (Net 30).
+3. **Home Office**: Freelancers, remote workers, and micro-businesses. They purchase a mix of consumer-grade and business-grade products.
+
+All marketing initiatives and product pricing strategies are tailored to these specific segments.

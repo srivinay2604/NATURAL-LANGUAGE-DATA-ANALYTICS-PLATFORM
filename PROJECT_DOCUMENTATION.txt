@@ -1,0 +1,996 @@
+
+================================================================================
+         NL ANALYTICS — NATURAL LANGUAGE ANALYTICS PLATFORM
+         End-to-End Project Documentation
+================================================================================
+
+Project Name    : NL Analytics
+Entry Point     : app.py
+Framework       : Streamlit
+AI Model        : Llama 3.1 8B (via Groq)
+Version         : 1.0.0
+Last Updated    : June 2026
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+  1. Project Overview
+  2. High-Level Architecture
+  3. Tech Stack — Complete Reference
+  4. Project Folder Structure
+  5. End-to-End Working (Step-by-Step Flow)
+  6. Module-by-Module Breakdown
+     6.1  app.py                   — Application Entry Point
+     6.2  graph/state.py           — Shared Workflow State
+     6.3  graph/workflow.py        — LangGraph Workflow Builder
+     6.4  graph/nodes.py           — Pipeline Node Functions
+     6.5  services/llm.py          — Groq LLM Service
+     6.6  services/database.py     — DuckDB Database Service
+     6.7  services/vector_store.py — ChromaDB Vector Store Service
+     6.8  services/cache.py        — Redis Semantic Cache Service
+     6.9  services/observability.py— Langfuse Tracing Service
+     6.10 utils/schema_extractor.py— Schema Extraction Utility
+     6.11 utils/intent_classifier.py— Dual-Mode Intent Classifier
+     6.12 ui/components.py         — UI Components & Custom CSS
+     6.13 ui/charts.py             — Auto-Chart Engine
+  7. Data Flow Diagram (Text-Based)
+  8. LangGraph Workflow Routing Logic
+  9. Environment Variables Reference
+  10. Document Knowledge Base (RAG Source Files)
+  11. Key Design Decisions & Patterns
+  12. Error Handling & Retry Mechanism
+
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+NL Analytics is a production-grade, AI-powered analytics platform that allows
+users to query structured CSV data and internal company documents using plain
+English — no SQL or coding knowledge required.
+
+At its core, it combines:
+  → A Large Language Model (Llama 3.1 via Groq) for natural language understanding
+  → DuckDB for high-speed in-memory SQL execution on CSV files
+  → ChromaDB + SentenceTransformers for Retrieval-Augmented Generation (RAG)
+  → Redis for semantic caching of repeated/similar queries
+  → LangGraph for orchestrating the multi-step AI pipeline as a state machine
+  → Streamlit for the interactive, real-time web UI
+  → Langfuse for LLM observability and tracing
+
+There are two question types this platform handles:
+
+  (A) DATA QUESTIONS (SQL Path):
+      "What is total revenue by region?"
+      "Top 5 products by sales in Q1 2024?"
+      → Intent = "sql" → LLM generates SQL → DuckDB executes → Chart rendered
+
+  (B) DOCUMENT QUESTIONS (RAG Path):
+      "What is our revenue policy?"
+      "How is profit margin defined?"
+      → Intent = "rag" → ChromaDB retrieves context → LLM synthesizes answer
+
+
+================================================================================
+2. HIGH-LEVEL ARCHITECTURE
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                     STREAMLIT WEB UI (app.py)                   │
+  │  Sidebar: CSV Upload, Status Indicators, Schema, Cache Control  │
+  │  Main:    Question Input, Chips, Progress Steps, Results        │
+  └───────────────────────────┬─────────────────────────────────────┘
+                              │ User Question
+                              ▼
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                  LANGGRAPH WORKFLOW ENGINE                       │
+  │  StateGraph — Directed Acyclic Graph with conditional routing   │
+  │                                                                 │
+  │  [START] → [Cache Check] ──MISS──► [Intent Classifier]         │
+  │                │                           │                    │
+  │              HIT                     sql / rag                  │
+  │                │              ┌────────────┴────────────┐       │
+  │               END             ▼                         ▼       │
+  │                        [SQL Generator]          [RAG Retriever] │
+  │                               │                         │       │
+  │                        [SQL Executor] ◄──────[RAG Answer Node]  │
+  │                          │         │                    │       │
+  │                        OK        FAIL                   │       │
+  │                          │         │                    │       │
+  │                    [Cache Save]  [SQL Fix]◄─────────────┘       │
+  │                          │      (max 3 retries)                 │
+  │                         END                                     │
+  └─────────────────────────────────────────────────────────────────┘
+
+  Supporting Services (running throughout the workflow):
+  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────┐
+  │  Groq (LLM)  │  │    DuckDB    │  │   ChromaDB   │  │  Redis   │
+  │  Llama 3.1   │  │  In-Memory   │  │  Vector DB   │  │  Cache   │
+  │  SQL Gen     │  │  SQL Engine  │  │  RAG Store   │  │ Semantic │
+  │  RAG Synth   │  │  CSV Query   │  │  Embeddings  │  │ Cache    │
+  └──────────────┘  └──────────────┘  └──────────────┘  └──────────┘
+
+  ┌────────────────────────────────────────────┐
+  │  Langfuse — Observability & Tracing        │
+  │  Traces every node, latency, input/output  │
+  └────────────────────────────────────────────┘
+
+
+================================================================================
+3. TECH STACK — COMPLETE REFERENCE
+================================================================================
+
+  ─────────────────────────────────────────────────────────────────
+  TECHNOLOGY           VERSION   WHY USED              WHERE USED
+  ─────────────────────────────────────────────────────────────────
+
+  1. STREAMLIT
+     What:   Python framework for rapidly building interactive web apps.
+     Why:    No frontend knowledge needed; extremely fast to build
+             reactive data dashboards with Python only. Natively handles
+             session state, widgets, layout, real-time reruns.
+     Where:  app.py (entire UI layer), ui/components.py, ui/charts.py
+     How:    `st.set_page_config`, `st.form`, `st.sidebar.*`, `st.dataframe`,
+             `st.plotly_chart`, `@st.cache_resource` for startup caching.
+
+  ─────────────────────────────────────────────────────────────────
+
+  2. LANGGRAPH
+     What:   A graph-based orchestration framework built on LangChain Core,
+             used to define stateful multi-step AI agent workflows.
+     Why:    Enables defining AI pipelines as directed graphs with conditional
+             routing, retry loops, and clean state management — far better
+             than linear chains for complex multi-path workflows.
+     Where:  graph/workflow.py (graph definition), graph/nodes.py (node logic),
+             graph/state.py (shared state schema)
+     How:    `StateGraph(AgentState)` → `add_node()` → `add_conditional_edges()`
+             → `workflow.compile()` → `workflow.stream(initial_state)`
+
+  ─────────────────────────────────────────────────────────────────
+
+  3. GROQ (via groq Python SDK)
+     What:   Cloud-based LLM inference API with ultra-low latency, powered by
+             custom LPU (Language Processing Unit) hardware.
+     Why:    Groq delivers Llama 3.1 responses in ~1-2 seconds — far faster
+             than standard cloud LLMs. Essential for interactive analytics.
+     Where:  services/llm.py (all LLM calls)
+     How:    `client.chat.completions.create(model="llama-3.1-8b-instant", ...)`
+             Used for: SQL generation, SQL repair, intent classification,
+             and RAG answer synthesis.
+     Model:  llama-3.1-8b-instant (8 billion parameter instruction model)
+
+  ─────────────────────────────────────────────────────────────────
+
+  4. DUCKDB
+     What:   An in-process, in-memory analytical SQL database engine.
+     Why:    Blazing-fast analytics on CSV files. No server setup. Natively
+             reads CSV/Parquet. SQL compliant. Handles 60-million+ rows easily.
+             Perfect for interactive, user-uploaded datasets.
+     Where:  services/database.py
+     How:    `duckdb.connect(database=':memory:')` → `CREATE OR REPLACE TABLE df
+             AS SELECT * FROM read_csv_auto(filepath)` → `conn.execute(sql).fetchdf()`
+             The CSV is loaded into a DuckDB table named "df" and all AI-generated
+             SQL queries target this table.
+
+  ─────────────────────────────────────────────────────────────────
+
+  5. CHROMADB
+     What:   An open-source, local vector database for storing and searching
+             high-dimensional embeddings.
+     Why:    Needed for semantic document search (RAG). Stores company documents
+             as vector embeddings and finds the most semantically relevant chunks
+             for any given query. Runs fully locally — no API needed.
+     Where:  services/vector_store.py, chroma_db/ (persistent storage on disk)
+     How:    `chromadb.PersistentClient(path=...)` → `collection.add(ids, docs, embeddings)`
+             → `collection.query(query_embeddings=[...], n_results=5)`
+
+  ─────────────────────────────────────────────────────────────────
+
+  6. SENTENCE-TRANSFORMERS (all-MiniLM-L6-v2)
+     What:   A Python library providing pre-trained NLP models that convert text
+             into dense numerical vector representations (embeddings).
+     Why:    Used to embed both documents (at indexing time) and user queries
+             (at search time) into the same vector space so semantic similarity
+             can be measured. all-MiniLM-L6-v2 is fast and lightweight.
+     Where:  services/vector_store.py (embed function), services/cache.py
+             (semantic cache similarity search)
+     How:    `SentenceTransformer('all-MiniLM-L6-v2').encode(text).tolist()`
+             Returns a 384-dimensional float vector for any input text.
+
+  ─────────────────────────────────────────────────────────────────
+
+  7. REDIS
+     What:   An in-memory key-value data store, used here as a semantic cache.
+     Why:    Prevents redundant LLM calls and SQL executions for questions that
+             have been answered before (or are semantically very similar).
+             Saves cost and improves response speed dramatically for repeat queries.
+     Where:  services/cache.py
+     How:    On each new query, the question vector is compared via cosine
+             similarity against all Redis-stored question vectors. If similarity
+             >= 0.90 (configurable), the cached result is returned instantly.
+             New successful results are saved: `client.setex(key, TTL, json_payload)`
+
+  ─────────────────────────────────────────────────────────────────
+
+  8. LANGFUSE
+     What:   An open-source LLM observability and monitoring platform.
+     Why:    Provides full tracing of every LLM call — inputs, outputs, latency,
+             token counts. Invaluable for debugging, prompt optimization, and
+             understanding system behavior in production.
+     Where:  services/observability.py — all LLM call sites (llm.py) log spans
+     How:    `langfuse_client.start_observation(as_type="trace", ...)` → for each
+             LLM call: `trace.start_observation(as_type="span", name=..., input=..., output=...)`
+             → `trace.end()` with final answer.
+
+  ─────────────────────────────────────────────────────────────────
+
+  9. PLOTLY (plotly.express + plotly.graph_objects)
+     What:   An interactive charting library for Python.
+     Why:    Produces beautiful, interactive charts that work natively in Streamlit.
+             Supports bar, line, scatter, pie charts and custom indicator cards.
+     Where:  ui/charts.py (auto_chart function)
+     How:    `px.bar(df, x=..., y=...)`, `px.line(df, x=..., y=...)`,
+             `go.Indicator(mode="number", value=...)`. All charts use a dark
+             cyberpunk theme with neon red (#ff2a4b) color palette.
+
+  ─────────────────────────────────────────────────────────────────
+
+  10. PANDAS
+      What:   The standard Python data manipulation and analysis library.
+      Why:    Used everywhere for in-memory DataFrame operations — reading CSVs,
+              passing query results, serializing/deserializing cache payloads.
+      Where:  graph/nodes.py, services/database.py, utils/schema_extractor.py,
+              ui/components.py, ui/charts.py
+      How:    `pd.read_csv()`, `conn.execute(sql).fetchdf()` (returns pandas DF),
+              `df.to_dict(orient='records')` for cache serialization.
+
+  ─────────────────────────────────────────────────────────────────
+
+  11. NUMPY
+      What:   Fundamental numerical computing library for Python.
+      Why:    Used specifically for cosine similarity calculation in the semantic
+              cache — computing dot products and norms of embedding vectors.
+      Where:  services/cache.py (cosine_similarity function)
+      How:    `np.dot(arr1, arr2) / (np.linalg.norm(arr1) * np.linalg.norm(arr2))`
+
+  ─────────────────────────────────────────────────────────────────
+
+  12. PYTHON-DOTENV
+      What:   Loads environment variables from a .env file into os.environ.
+      Why:    Keeps API keys and config out of source code. Standard secure
+              practice for managing secrets during local development.
+      Where:  Loaded in app.py, services/llm.py, services/cache.py,
+              services/observability.py via `load_dotenv()`
+      How:    `load_dotenv()` reads .env → `os.getenv("GROQ_API_KEY")`
+
+  ─────────────────────────────────────────────────────────────────
+
+  13. LANGCHAIN-CORE
+      What:   Core library providing base abstractions and types used by LangGraph.
+      Why:    Required dependency for LangGraph (provides StateGraph, graph primitives).
+      Where:  Implicitly used via langgraph imports.
+
+  ─────────────────────────────────────────────────────────────────
+
+
+================================================================================
+4. PROJECT FOLDER STRUCTURE
+================================================================================
+
+nl_analytics/
+│
+├── app.py                          ← Main entry point (Streamlit UI + orchestration)
+├── requirements.txt                ← All Python dependencies
+├── .env                            ← API keys & config (not committed to git)
+├── .env.example                    ← Template for .env setup
+│
+├── graph/                          ← LangGraph workflow engine
+│   ├── state.py                    ← Shared state (AgentState TypedDict)
+│   ├── nodes.py                    ← All node functions (8 pipeline nodes)
+│   └── workflow.py                 ← Graph construction and compilation
+│
+├── services/                       ← Backend service modules
+│   ├── llm.py                      ← Groq API client (SQL gen, RAG, classify)
+│   ├── database.py                 ← DuckDB connection & CSV loader
+│   ├── vector_store.py             ← ChromaDB client & embedding functions
+│   ├── cache.py                    ← Redis semantic cache (save/search/clear)
+│   └── observability.py            ← Langfuse trace & span logging
+│
+├── utils/                          ← Helper utilities
+│   ├── schema_extractor.py         ← Reads CSV schema for LLM prompt injection
+│   └── intent_classifier.py       ← Dual-mode classifier (LLM + heuristics)
+│
+├── ui/                             ← Streamlit UI components
+│   ├── components.py               ← Custom CSS, sidebar, chips, progress steps
+│   └── charts.py                   ← Auto chart selection engine (Plotly)
+│
+├── documents/                      ← RAG knowledge base (plain text files)
+│   ├── kpi_definitions.txt         ← KPI metric definitions
+│   ├── revenue_policy.txt          ← Revenue recognition policy
+│   └── company_guidelines.txt      ← Company operational guidelines
+│
+├── data/                           ← CSV data files
+│   └── sample_sales.csv            ← Default demo dataset (60 rows, sales data)
+│       └── uploaded/               ← Runtime-uploaded user CSVs saved here
+│
+└── chroma_db/                      ← ChromaDB persistent vector store (auto-created)
+
+
+================================================================================
+5. END-TO-END WORKING (STEP-BY-STEP FLOW)
+================================================================================
+
+─────────────────────────────────────────────────────────────────────────────
+PHASE 0: APPLICATION STARTUP (runs once via @st.cache_resource)
+─────────────────────────────────────────────────────────────────────────────
+
+When `streamlit run app.py` is executed:
+
+  Step 0.1 → st.set_page_config() sets the page title, layout, and favicon
+  Step 0.2 → load_dotenv() loads all API keys from the .env file
+  Step 0.3 → @st.cache_resource ensures startup_sequence() runs only ONCE
+
+  Inside startup_sequence():
+    [a] Langfuse client is initialized (if keys are provided)
+    [b] Redis client is pinged to test connectivity
+    [c] SentenceTransformer model (all-MiniLM-L6-v2) is loaded into memory
+    [d] ChromaDB is initialized — if collection "company_docs" is empty,
+        all .txt files in /documents are read, chunked (500 chars, 50 overlap),
+        embedded into 384-dim vectors, and stored in ChromaDB
+    [e] Groq client is initialized with GROQ_API_KEY
+    [f] LangGraph workflow is compiled into a StateGraph
+
+  After startup:
+    → DuckDB loads the default CSV (sample_sales.csv) into table "df"
+    → Sidebar is populated: CSV uploader, schema viewer, status indicators
+    → Main area shows title, example chips, query form
+
+─────────────────────────────────────────────────────────────────────────────
+PHASE 1: USER ASKS A QUESTION
+─────────────────────────────────────────────────────────────────────────────
+
+  Option A: User clicks one of the example question chips
+    → st.session_state.query_input = selected chip text
+    → st.session_state.trigger_run = True
+    → st.rerun() is called → re-executes app.py
+
+  Option B: User types in the text input and clicks "Search & Analyze"
+    → st.session_state.query_input = user_query
+    → st.session_state.trigger_run = True
+
+  The question flows into the main execution block when trigger_run = True.
+
+─────────────────────────────────────────────────────────────────────────────
+PHASE 2: PIPELINE INITIALIZATION
+─────────────────────────────────────────────────────────────────────────────
+
+  Step 2.1 → trigger_run is reset to False (prevents infinite reruns)
+  Step 2.2 → A Langfuse trace is started: observability.start_trace(question)
+  Step 2.3 → Schema is extracted: utils/schema_extractor.extract_schema(csv_path)
+             → Reads the CSV, builds a text description of all columns with
+               their data types and 3 sample values. Example output:
+               "Table Name: df | Column: Sales (Type: float64, Samples: [150.0, 200.5, 98.0])"
+  Step 2.4 → AgentState is initialized with: question, schema, empty fields
+  Step 2.5 → Progress placeholder UI is rendered (6 pipeline steps shown)
+
+─────────────────────────────────────────────────────────────────────────────
+PHASE 3: LANGGRAPH WORKFLOW STREAMING
+─────────────────────────────────────────────────────────────────────────────
+
+  The workflow is invoked via: `workflow_app.stream(initial_state)`
+  Each event yields a (node_name, state_update) pair as nodes complete.
+
+  ── NODE 1: cache_check_node ──────────────────────────────────────────────
+  Location: graph/nodes.py → cache_check_node()
+  What it does:
+    → Embeds the question into a 384-dim vector using SentenceTransformer
+    → Calls cache.semantic_search(question_vector)
+    → Redis is scanned for all cache keys (prefix "nl_cache:*")
+    → For each key, cosine similarity is computed between stored & new vector
+    → If similarity >= 0.90 (SIMILARITY_THRESHOLD), cache hit is declared
+    → Returns: cached=True with the full previous result (sql_result, answer, chart_type)
+    → If cache miss: returns cached=False → workflow routes to intent_classifier
+
+  ── NODE 2: intent_classifier_node ────────────────────────────────────────
+  Location: graph/nodes.py → intent_classifier_node()
+  What it does:
+    → Calls utils/intent_classifier.classify_intent()
+    → First tries the LLM classifier (llm.classify_intent via Groq):
+        System prompt: "Classify this question as 'sql' or 'rag'. Reply with one word."
+        → Returns "sql" or "rag"
+    → If LLM fails, falls back to heuristic keyword matching:
+        RAG keywords: "policy", "definition", "guideline", "rule", "formula",
+                      "what is", "how to", "meaning", "target"
+        Default fallback: "sql"
+    → Updates state: intent = "sql" | "rag"
+    → Workflow routes accordingly
+
+  ── SQL PATH ──────────────────────────────────────────────────────────────
+
+  ── NODE 3: sql_generator_node ────────────────────────────────────────────
+  Location: graph/nodes.py → sql_generator_node()
+  What it does:
+    → Calls llm.generate_sql(question, schema, trace=trace)
+    → System prompt includes: full CSV schema (all columns, types, samples),
+      strict rules (table name is always "df", no markdown wrapping, DuckDB syntax),
+      DuckDB-specific date handling (STRFTIME, EXTRACT, CAST)
+    → Model: Llama 3.1 8B Instant via Groq
+    → Temperature: 0.0 (deterministic output for SQL)
+    → Strips any accidental markdown code block wrapping (```sql ... ```)
+    → Updates state: sql_query = "SELECT ..."
+    → Logs span to Langfuse: generate_sql(input=question+schema, output=sql)
+
+  ── NODE 4: sql_executor_node ─────────────────────────────────────────────
+  Location: graph/nodes.py → sql_executor_node()
+  What it does:
+    → Calls database.execute_query(sql_query, trace=trace)
+    → DuckDB runs the SQL against the in-memory "df" table
+    → Returns a pandas DataFrame with query results
+    → Calls detect_chart_type(df, question) to determine visualization:
+        * 1 row, 1 col → "metric" (Plotly Indicator card)
+        * Date columns present → "line" (trend chart)
+        * "share/percent" keywords → "pie" chart
+        * 2 numeric cols → "scatter" plot
+        * 1 category + 1 numeric → "bar" chart
+        * > 5 columns → "table" (no chart)
+    → Synthesizes a simple final_answer text from results
+    → On SQL error: returns sql_error → routes to sql_fix OR END
+
+  ── NODE 5: sql_fix_node (RETRY LOOP) ─────────────────────────────────────
+  Location: graph/nodes.py → sql_fix_node()
+  What it does:
+    → Activated only when sql_executor fails (sql_error is set)
+    → Calls llm.fix_sql(question, bad_sql, error_message, trace=trace)
+    → System prompt instructs the model to debug and fix the SQL
+    → User prompt includes: original question, failed query, DuckDB error message
+    → Returns a corrected SQL query → increments retry_count
+    → Workflow loops back to sql_executor_node
+    → Maximum 3 retries — if retry_count >= 3, routes to END with error message
+
+  ── RAG PATH ──────────────────────────────────────────────────────────────
+
+  ── NODE 6: rag_retriever_node ────────────────────────────────────────────
+  Location: graph/nodes.py → rag_retriever_node()
+  What it does:
+    → Calls vector_store.search(question, n_results=5)
+    → Question is embedded into a vector
+    → ChromaDB queries the "company_docs" collection for the 5 most similar chunks
+    → The matching text chunks are joined with double newlines
+    → Updates state: rag_context = (5 document chunks concatenated)
+
+  ── NODE 7: rag_answer_node ───────────────────────────────────────────────
+  Location: graph/nodes.py → rag_answer_node()
+  What it does:
+    → Calls llm.answer_from_rag(question, rag_context, trace=trace)
+    → System prompt: "Answer using only the provided context. Be concise."
+    → User prompt: "Context:\n{rag_context}\n\nQuestion: {question}"
+    → LLM synthesizes a precise, grounded answer from the retrieved documents
+    → If the answer is not in context, the LLM is instructed to say so clearly
+    → Updates state: rag_answer = answer, final_answer = answer
+
+  ── SHARED FINAL NODE ─────────────────────────────────────────────────────
+
+  ── NODE 8: cache_save_node ───────────────────────────────────────────────
+  Location: graph/nodes.py → cache_save_node()
+  What it does:
+    → Both SQL and RAG paths converge here on success
+    → Serializes the result payload (final_answer, sql_result as dict,
+      chart_type, sql_query, intent) to JSON
+    → Embeds the question into a vector (using SentenceTransformer)
+    → Saves to Redis: key = "nl_cache:{md5(question)}"
+      with TTL = CACHE_TTL_SECONDS (default: 3600 seconds = 1 hour)
+    → Future identical/similar questions will hit this cache
+
+─────────────────────────────────────────────────────────────────────────────
+PHASE 4: RESULT DISPLAY
+─────────────────────────────────────────────────────────────────────────────
+
+  After the workflow stream completes:
+    → Progress placeholder is cleared (progress_placeholder.empty())
+    → A badge is shown indicating result source:
+        ⚡ "Answered from cache" (green)
+        📄 "Answered from documents" (RAG, red)
+        📊 "Answered via SQL query" (SQL, orange)
+
+  For SQL results:
+    → Expander shows the raw executed SQL query (syntax highlighted)
+    → charts.auto_chart(df, question) is called:
+        → Determines the best Plotly chart type from DataFrame shape + question
+        → All charts use dark cyberpunk theme (paper_bgcolor=#121318, neon red)
+        → If no chart fits, falls back to st.dataframe()
+    → Raw DataFrame is shown below the chart
+    → "Download Results as CSV" button is provided
+
+  For RAG results:
+    → final_answer text is displayed directly with st.write()
+
+  History:
+    → Successful answers are prepended to session_state.history (max 5 items)
+    → Clicking a history item re-triggers the query
+
+  Observability:
+    → observability.end_trace(trace, final_answer, cached) is called
+    → If SQL failed after all retries, error is logged to Langfuse
+
+
+================================================================================
+6. MODULE-BY-MODULE BREAKDOWN
+================================================================================
+
+──────────────────────────────────────────────
+6.1  app.py  —  Application Entry Point
+──────────────────────────────────────────────
+Role: Master controller — wires together all modules and renders the UI.
+
+Key responsibilities:
+  • Sets Streamlit page config (title, layout, icon)
+  • Manages 4 session state variables: history, query_input, trigger_run, csv_path
+  • Runs startup_sequence() once via @st.cache_resource
+  • Renders the full sidebar (CSV upload, schema info, status, cache clear button)
+  • Renders main area (title, chips, query form)
+  • Triggers LangGraph workflow on form submit or chip click
+  • Streams workflow events and updates progress UI in real time
+  • Displays results (charts, tables, RAG text)
+  • Manages chat history display at bottom
+
+──────────────────────────────────────────────
+6.2  graph/state.py  —  Shared Workflow State
+──────────────────────────────────────────────
+Role: Defines the AgentState TypedDict — the central data structure that
+      travels through every node of the LangGraph workflow.
+
+Fields:
+  question     → str   : User's original question
+  intent       → str   : "sql" or "rag" (set by intent_classifier)
+  schema       → str   : CSV schema text for LLM prompt injection
+  sql_query    → str   : SQL query generated by LLM
+  sql_result   → Any   : pandas DataFrame from DuckDB execution
+  sql_error    → str   : Error message if SQL fails
+  retry_count  → int   : Number of SQL repair attempts (max 3)
+  rag_context  → str   : Retrieved document chunks from ChromaDB
+  rag_answer   → str   : LLM synthesized answer from documents
+  chart_type   → str   : bar/line/pie/scatter/table/metric
+  final_answer → str   : The final answer shown to user
+  cached       → bool  : Whether result came from Redis cache
+  trace_id     → str   : Langfuse trace ID for observability
+
+──────────────────────────────────────────────
+6.3  graph/workflow.py  —  LangGraph Workflow Builder
+──────────────────────────────────────────────
+Role: Builds and compiles the directed StateGraph using all 8 node functions.
+
+get_workflow() function:
+  1. Creates StateGraph(AgentState)
+  2. Adds all 8 nodes (cache_check, intent_classifier, sql_generator,
+     sql_executor, sql_fix, rag_retriever, rag_answer, cache_save)
+  3. Defines edges (direct and conditional):
+     START → cache_check
+     cache_check → (hit→END, miss→intent_classifier) [conditional]
+     intent_classifier → (sql→sql_generator, rag→rag_retriever) [conditional]
+     sql_generator → sql_executor [direct]
+     sql_executor → (ok→cache_save, fail→sql_fix, max_retries→END) [conditional]
+     sql_fix → sql_executor [direct, creates retry loop]
+     rag_retriever → rag_answer [direct]
+     rag_answer → cache_save [direct]
+     cache_save → END [direct]
+  4. Compiles the graph: workflow.compile()
+  5. Returns the compiled graph for streaming
+
+──────────────────────────────────────────────
+6.4  graph/nodes.py  —  Pipeline Node Functions
+──────────────────────────────────────────────
+Role: Contains all 8 pure Python functions that implement each step of the pipeline.
+
+Also contains detect_chart_type(df, question):
+  A heuristic function that analyzes the DataFrame shape and question keywords
+  to return the most appropriate chart type string (metric/line/pie/scatter/bar/table).
+
+All nodes follow the same signature: fn(state: AgentState) → dict
+Each node returns only the fields it modifies in the shared state.
+
+──────────────────────────────────────────────
+6.5  services/llm.py  —  Groq LLM Service
+──────────────────────────────────────────────
+Role: All LLM interactions centralized here. Single Groq client instance.
+
+Functions:
+  _call_groq(system, user) → str
+    → Internal helper, 30s timeout, model=llama-3.1-8b-instant, temp=0.0
+
+  generate_sql(question, schema, trace) → str
+    → Translates natural language to DuckDB SQL. Schema is injected into prompt.
+
+  fix_sql(question, bad_sql, error, trace) → str
+    → Repairs failed SQL. Error message from DuckDB is injected into prompt.
+
+  classify_intent(question, trace) → "sql" | "rag"
+    → Classifies the query type using a minimal single-word system prompt.
+
+  answer_from_rag(question, context, trace) → str
+    → Generates a grounded answer from retrieved document chunks.
+
+All functions: log Langfuse spans with input, output, and latency_seconds.
+
+──────────────────────────────────────────────
+6.6  services/database.py  —  DuckDB Database Service
+──────────────────────────────────────────────
+Role: Manages the DuckDB connection and all data operations.
+
+get_connection():
+  → Returns existing or creates new DuckDB in-memory connection
+  → In Streamlit context: stored in st.session_state.duckdb_conn to survive reruns
+  → Outside Streamlit: global singleton
+
+load_csv(filepath):
+  → Primary: DuckDB's read_csv_auto() for native type inference (incl. DATE columns)
+  → Fallback: pandas.read_csv() + conn.register() if read_csv_auto fails
+  → Creates/replaces the table named "df"
+
+execute_query(sql, trace):
+  → Executes SQL on "df" table, returns pandas DataFrame
+  → Logs DuckDB execution span to Langfuse with row_count
+
+get_schema(filepath):
+  → Runs `DESCRIBE df` to get column names and types
+  → Returns dict: {column_name: data_type}
+
+──────────────────────────────────────────────
+6.7  services/vector_store.py  —  ChromaDB Vector Store Service
+──────────────────────────────────────────────
+Role: Manages document indexing and semantic search using ChromaDB.
+
+get_embedding_model():
+  → Lazily loads SentenceTransformer('all-MiniLM-L6-v2') once
+
+get_chroma_client():
+  → Creates PersistentClient at ./chroma_db (survives app restarts)
+
+embed(text) → list[float]:
+  → Converts text to 384-dim embedding vector
+
+chunk_text(text, chunk_size=500, overlap=50) → list[str]:
+  → Splits long documents into overlapping chunks to preserve context
+    across chunk boundaries
+
+load_documents(folder_path):
+  → Reads all .txt files from /documents folder
+  → Chunks each file, generates embeddings, stores in ChromaDB
+  → Skips if collection already has documents (idempotent startup)
+
+search(query, n_results=5) → list[str]:
+  → Embeds query, queries ChromaDB, returns top-5 matching text chunks
+
+──────────────────────────────────────────────
+6.8  services/cache.py  —  Redis Semantic Cache Service
+──────────────────────────────────────────────
+Role: Implements semantic (not exact-match) caching for query results.
+
+cosine_similarity(v1, v2) → float:
+  → Computes cosine similarity score between two embedding vectors using NumPy
+
+semantic_search(question_vector) → dict | None:
+  → Fetches all keys with prefix "nl_cache:*" from Redis
+  → For each entry, parses the stored JSON, retrieves stored vector
+  → Computes cosine similarity with current question vector
+  → Returns best matching result if similarity >= SIMILARITY_THRESHOLD (0.90)
+  → This means near-identical questions are served from cache without any LLM call
+
+save(question, question_vector, result_json):
+  → Key: "nl_cache:{md5(question)}"
+  → Value: JSON {question, vector, result_json}
+  → TTL: CACHE_TTL_SECONDS (default 3600 = 1 hour)
+
+clear_all():
+  → Deletes all "nl_cache:*" keys from Redis (triggered from sidebar button)
+
+──────────────────────────────────────────────
+6.9  services/observability.py  —  Langfuse Tracing Service
+──────────────────────────────────────────────
+Role: Wraps Langfuse SDK for full LLM pipeline observability.
+
+start_trace(question) → trace object:
+  → Creates a new Langfuse trace named "nl-analytics-query"
+  → Stores in active_traces dict (keyed by trace_id) for cross-node access
+
+log_span(trace, name, input_data, output_data, latency):
+  → Creates a span inside the active trace
+  → Records name, input, output, and latency_seconds metadata
+
+log_error(trace, error_message):
+  → Tags the trace with "error" and records error output
+
+end_trace(trace, final_answer, cached):
+  → Closes the trace with final answer and cached metadata
+
+All Langfuse calls fail silently (try/except) — if Langfuse is not configured,
+the platform runs normally without tracing.
+
+──────────────────────────────────────────────
+6.10 utils/schema_extractor.py  —  Schema Extraction Utility
+──────────────────────────────────────────────
+Role: Reads a CSV file and generates a human-readable schema description
+      that is injected into the SQL generation prompt.
+
+extract_schema(filepath) → str:
+  → Reads CSV with pd.read_csv()
+  → For each column: records name, dtype, and up to 3 sample values
+  → Formats as:
+      "Table Name: df
+       Total Rows: 60
+       Columns:
+         - Region (Type: object, Samples: [North, South, East])
+         - Sales (Type: float64, Samples: [150.0, 200.5, 98.0])"
+  → This rich context allows the LLM to write accurate SQL without hallucination
+
+──────────────────────────────────────────────
+6.11 utils/intent_classifier.py  —  Dual-Mode Intent Classifier
+──────────────────────────────────────────────
+Role: Classifies user questions as "sql" (data query) or "rag" (document query).
+
+classify_intent(question, llm_classifier_func):
+  → Primary: Calls the LLM-based classifier via Groq (fast, accurate)
+  → Fallback: If LLM fails/errors, uses classify_intent_heuristics()
+
+classify_intent_heuristics(question):
+  → Fast regex-based keyword matching (no LLM needed)
+  → RAG triggers: policy, definition, guideline, rule, formula, target,
+                  "what is", "how to", meaning, mean
+  → Default fallback: "sql"
+
+──────────────────────────────────────────────
+6.12 ui/components.py  —  UI Components & Custom CSS
+──────────────────────────────────────────────
+Role: All reusable Streamlit UI elements and styling injection.
+
+inject_custom_css():
+  → Injects a cyberpunk dark theme via <style> tags:
+      • Google Font: Outfit (wght 300-700)
+      • Background: #0b0c10 (near-black)
+      • Headers: gradient from white to neon red (#ff2a4b)
+      • Cards: glassmorphism with pulsing red glow animation (redPulse keyframes)
+      • Buttons: dark background → neon red gradient on hover + translateY
+      • Input fields: dark with red focus border glow
+      • Badges: styled inline HTML for "cached", "rag", "sql" result types
+
+render_sidebar_status(groq_ok, redis_ok, chroma_ok, langfuse_ok):
+  → Shows 🟢 Connected / 🔴 Offline for each service
+
+render_schema_info(schema_dict, row_count):
+  → Expandable sidebar panel showing active CSV column structure
+
+render_question_chips(questions) → str | None:
+  → Renders preset question buttons as a horizontal chip row
+  → Returns the clicked question text
+
+render_progress_step(name, status):
+  → Shows step status with emoji: ⏳ running / ✅ completed / ❌ failed / ◽ skipped
+
+──────────────────────────────────────────────
+6.13 ui/charts.py  —  Auto-Chart Engine
+──────────────────────────────────────────────
+Role: Given a pandas DataFrame and question string, returns the best Plotly figure.
+
+auto_chart(df, question) → Figure | None:
+
+  Priority order (evaluated top to bottom):
+  1. (1 row, 1 col) → go.Indicator metric card (large number display)
+  2. Date-like column + numeric column → px.line (trend over time)
+  3. "share/percent" keywords in question or columns → px.pie
+  4. Exactly 2 numeric columns → px.scatter
+  5. 1 categorical + 1 numeric → px.bar
+  6. > 5 columns → return None (render as st.dataframe instead)
+  7. Default → px.bar (any remaining numeric columns)
+
+  All charts:
+    → Dark theme: template="plotly_dark", paper_bgcolor="#121318"
+    → Neon red color palette: ['#ff2a4b', '#ff6b81', '#ff99a8', '#cc0022', '#800016']
+    → Font: Outfit family, white color
+    → Height: 450px (or 250px for metric cards)
+
+
+================================================================================
+7. DATA FLOW DIAGRAM (TEXT-BASED)
+================================================================================
+
+User types: "Top 5 products by revenue"
+
+  app.py
+    ↓
+  extract_schema(csv_path) → "Table: df, Columns: [Product, Sales, ...]"
+    ↓
+  AgentState initialized {question, schema, intent="", ...}
+    ↓
+  workflow.stream(initial_state)
+    ↓
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ cache_check_node                                                  │
+  │  embed("Top 5 products by revenue") → [0.12, -0.34, ...]         │
+  │  Redis scan → no match found (cosine < 0.90)                     │
+  │  return {cached: False}  →  ROUTE: intent_classifier             │
+  └──────────────────────────────────────────────────────────────────┘
+    ↓
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ intent_classifier_node                                            │
+  │  Groq LLM: "Top 5 products by revenue" → "sql"                   │
+  │  return {intent: "sql"}  →  ROUTE: sql_generator                 │
+  └──────────────────────────────────────────────────────────────────┘
+    ↓
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ sql_generator_node                                                │
+  │  Groq LLM prompt: question + CSV schema                          │
+  │  Returns: SELECT "Product", SUM("Sales") AS total_revenue        │
+  │           FROM df                                                 │
+  │           GROUP BY "Product"                                      │
+  │           ORDER BY total_revenue DESC                             │
+  │           LIMIT 5                                                 │
+  │  return {sql_query: "SELECT ..."}                                 │
+  └──────────────────────────────────────────────────────────────────┘
+    ↓
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ sql_executor_node                                                 │
+  │  DuckDB: executes query against in-memory "df" table             │
+  │  Result: DataFrame(5 rows × 2 cols: Product, total_revenue)      │
+  │  detect_chart_type → "bar" (2 cols: 1 category + 1 numeric)      │
+  │  return {sql_result: df, chart_type: "bar", sql_error: ""}       │
+  │  →  ROUTE: cache_save                                             │
+  └──────────────────────────────────────────────────────────────────┘
+    ↓
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ cache_save_node                                                   │
+  │  Serialize df to dict records                                     │
+  │  Embed question → vector                                          │
+  │  Save to Redis: {question, vector, result_json} with 1hr TTL     │
+  └──────────────────────────────────────────────────────────────────┘
+    ↓
+  END → workflow complete
+
+  app.py receives final_state:
+    → Shows badge: 📊 "Answered via SQL query"
+    → Shows expander with SQL query code
+    → Charts: px.bar(df, x="Product", y="total_revenue") with dark theme
+    → Shows raw DataFrame below chart
+    → "Download as CSV" button
+    → Saves to session history
+
+
+================================================================================
+8. LANGGRAPH WORKFLOW ROUTING LOGIC
+================================================================================
+
+  ROUTER 1: route_cache_check(state)
+    if state["cached"] == True  →  "end"     → END
+    else                        →  "intent_classifier"
+
+  ROUTER 2: route_intent(state)
+    if state["intent"] == "rag" →  "rag_retriever"
+    else                        →  "sql_generator"
+
+  ROUTER 3: route_sql_execute(state)
+    if no sql_error             →  "cache_save"
+    if sql_error AND retry < 3  →  "sql_fix"   (retry loop)
+    if sql_error AND retry >= 3 →  "end"        (give up, show error)
+
+
+================================================================================
+9. ENVIRONMENT VARIABLES REFERENCE
+================================================================================
+
+  Variable                  Default               Description
+  ─────────────────────────────────────────────────────────────────
+  GROQ_API_KEY              (required)            Groq cloud API key for Llama 3.1
+  REDIS_HOST                localhost             Redis server hostname
+  REDIS_PORT                6379                  Redis server port
+  REDIS_PASSWORD            (empty)               Redis auth password (optional)
+  CACHE_TTL_SECONDS         3600                  Cache entry TTL in seconds
+  SIMILARITY_THRESHOLD      0.90                  Min cosine similarity for cache hit
+  DEFAULT_CSV_PATH          data/sample_sales.csv Default dataset on startup
+  LANGFUSE_PUBLIC_KEY       (optional)            Langfuse public key for tracing
+  LANGFUSE_SECRET_KEY       (optional)            Langfuse secret key for tracing
+  LANGFUSE_HOST             https://cloud.langfuse.com  Langfuse server URL
+
+  All variables are loaded from the .env file via python-dotenv.
+  The platform degrades gracefully: Redis unavailable → caching disabled.
+  Langfuse keys missing → tracing disabled. Core functionality remains intact.
+
+
+================================================================================
+10. DOCUMENT KNOWLEDGE BASE (RAG SOURCE FILES)
+================================================================================
+
+Location: /documents/
+
+These plain-text files are the "knowledge base" for the RAG pipeline.
+They are indexed into ChromaDB at startup (only once, then skipped).
+
+  kpi_definitions.txt
+    → Definitions of business KPIs: Revenue, Profit Margin, CAC, CLV, etc.
+    → Queried when user asks: "How is profit margin calculated?", "What is CAC?"
+
+  revenue_policy.txt
+    → Company revenue recognition policies, discount rules, refund policies
+    → Queried when user asks: "What is our revenue policy?", "How do we handle refunds?"
+
+  company_guidelines.txt
+    → Operational guidelines, reporting standards, escalation procedures
+    → Queried when user asks: "What are the company guidelines?", "How do we report?"
+
+Chunking: Each file is split into chunks of 500 characters with 50-char overlap
+          to preserve context at boundaries. Each chunk gets its own embedding vector.
+          All chunks are stored with metadata: {source: filename, chunk_index: idx}
+
+
+================================================================================
+11. KEY DESIGN DECISIONS & PATTERNS
+================================================================================
+
+  1. SESSION STATE FOR DUCKDB
+     DuckDB connection is stored in st.session_state.duckdb_conn (not a module-level
+     global) to survive Streamlit hot-reloads without losing the loaded CSV data.
+
+  2. CACHE RESOURCE FOR STARTUP
+     @st.cache_resource on startup_sequence() ensures the expensive operations
+     (model loading, ChromaDB init, workflow compilation) run EXACTLY ONCE,
+     not on every user interaction or UI rerun.
+
+  3. SEMANTIC CACHING OVER EXACT MATCHING
+     Redis cache uses vector cosine similarity (>= 0.90 threshold) rather than
+     exact string matching. This means "top 5 products by revenue" and
+     "show me the top five products ranked by revenue" both hit the same cache.
+
+  4. GRACEFUL DEGRADATION
+     Every external service (Redis, Langfuse, Groq) has try/except wrapping.
+     If Redis is down, the workflow continues without caching.
+     If Langfuse is unconfigured, tracing is silently skipped.
+     If LLM intent classification fails, heuristic regex takes over.
+
+  5. IDEMPOTENT DOCUMENT INDEXING
+     ChromaDB load_documents() checks if the collection already has documents
+     before indexing. This prevents duplicate embeddings on every app restart.
+
+  6. ZERO-TEMPERATURE SQL GENERATION
+     All Groq API calls use temperature=0.0 for fully deterministic outputs —
+     critical for SQL generation where reproducibility is essential.
+
+  7. PROMPT ENGINEERING FOR DUCKDB
+     The SQL generation prompt explicitly includes DuckDB-specific syntax rules
+     (e.g., STRFTIME(CAST(date AS DATE), '%Y-%m')) to prevent common syntax errors
+     from models trained on generic SQL dialects.
+
+  8. AUTO CHART HEURISTICS
+     Chart type selection avoids exposing chart choice to the user — instead,
+     the system automatically picks the best visualization based on the data
+     shape and question semantics (7-tier priority waterfall in charts.py).
+
+
+================================================================================
+12. ERROR HANDLING & RETRY MECHANISM
+================================================================================
+
+  SQL RETRY LOOP (max 3 attempts):
+  ─────────────────────────────────
+    Attempt 1: LLM generates initial SQL → DuckDB executes
+    If error:
+      Attempt 2: LLM receives (question + bad_sql + DuckDB_error) → fixes SQL → re-executes
+    If error again:
+      Attempt 3: LLM receives new error → fixes again → re-executes
+    If still failing after attempt 3:
+      → Show error message with tip: "Try rephrasing your question"
+      → Log error to Langfuse
+
+  SERVICE FAILURES:
+  ─────────────────
+    Redis fail    → _redis_failed=True flag set, all cache ops return None/no-op
+    Langfuse fail → All trace/span calls return None, wrapped in try/except
+    Groq fail     → Exception propagated to node → node catches and returns sql_error
+    ChromaDB fail → chroma_ok=False in status dict, shown in sidebar as 🔴 Offline
+
+  CSV LOADING FALLBACK:
+  ─────────────────────
+    Primary   : DuckDB read_csv_auto() (best type inference, handles dates natively)
+    Fallback  : pandas pd.read_csv() → register as temp view → CREATE TABLE
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

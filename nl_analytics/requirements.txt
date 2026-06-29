@@ -1,0 +1,13 @@
+streamlit
+langgraph
+langchain-core
+groq
+duckdb
+chromadb
+sentence-transformers
+redis
+langfuse
+plotly
+pandas
+python-dotenv
+numpy

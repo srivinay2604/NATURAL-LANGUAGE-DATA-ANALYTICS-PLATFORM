@@ -1,0 +1,36 @@
+# Company Revenue Recognition & Financial Policy
+
+This document outlines the standard guidelines and protocols for calculating, recognizing, and reporting revenue at our organization across all active regions: North, South, East, West, and Central.
+
+## 1. Revenue Recognition Principles
+Revenue is recognized in accordance with standard accounting principles (IFRS 15 / ASC 606). Specifically, revenue is recognized when a performance obligation is satisfied by transferring control of a promised good or service to the customer. 
+- For physical product sales, control transfers when products are delivered to the shipping address.
+- For services or subscription plans, revenue is recognized monthly as the service is rendered over the term of the agreement.
+- Revenue is recorded net of any customer discounts, refunds, or credits.
+
+## 2. Calculation of Total Revenue
+Total Revenue (Gross Sales) is calculated by multiplying the quantity of products sold by their individual unit prices:
+`Gross Revenue = Quantity * Unit Price`
+
+Net Revenue is computed by subtracting any approved promotional discounts or bulk order discounts from the Gross Revenue:
+`Net Revenue = Gross Revenue - Discount`
+
+All internal financial reporting and KPI dashboards must refer to Net Revenue when displaying "Total Amount" or "Revenue" figures unless specifically labeled as Gross Revenue.
+
+## 3. Quarterly Sales Targets
+To maintain healthy growth, the company sets quarterly milestones for each regional division:
+- **North Region**: Focuses heavily on Electronics and Corporate customer segments. The current quarterly net revenue target is set at $150,000.
+- **South Region**: High volume of Food and Clothing sales. The current quarterly target is $120,000.
+- **East Region**: Focuses on Furniture and Consumer segments. The quarterly target is $100,000.
+- **West Region**: Major technology hub with high Electronics sales. The quarterly target is $200,000.
+- **Central Region**: Primarily services Home Office and Food supplies. The quarterly target is $80,000.
+
+## 4. Discount Policies & Approvals
+Discounts are offered to stimulate sales volume but must adhere to strict guidelines:
+- **Standard Discount**: Up to 10% can be applied by a Sales Representative at the time of order without higher approval.
+- **Manager Approval**: Discounts between 10% and 20% require written approval from the Regional Sales Manager.
+- **VP Approval**: Any discount exceeding 20% is considered exceptional and must be approved by the VP of Sales.
+Discounts must be fully documented in the sales database under the `discount` field, and the reason for discount must be logged.
+
+## 5. Refunds and Adjustments
+In case of product returns, the corresponding revenue is reversed in the current reporting period. Profit calculations are adjusted dynamically to account for the cost of returns. All returns must be processed within 30 days of purchase.

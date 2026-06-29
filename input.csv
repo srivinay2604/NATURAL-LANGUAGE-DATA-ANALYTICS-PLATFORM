@@ -1,0 +1,51 @@
+session_id,date,page_path,traffic_source,device_category,sessions,bounces,conversions,revenue
+SESS-0001,2024-11-12,/checkout,Organic Search,desktop,608,340,31,1894.6
+SESS-0002,2024-11-20,/home,Direct,mobile,906,589,20,0.0
+SESS-0003,2024-11-04,/pricing,Paid Search,tablet,124,67,4,0.0
+SESS-0004,2024-11-28,/docs,Organic Search,desktop,344,142,10,0.0
+SESS-0005,2024-11-15,/blog,Social,mobile,450,210,12,0.0
+SESS-0006,2024-11-08,/signup,Referral,desktop,590,290,24,0.0
+SESS-0007,2024-11-22,/checkout,Organic Search,mobile,820,410,40,2400.0
+SESS-0008,2024-11-01,/home,Direct,desktop,350,165,5,0.0
+SESS-0009,2024-11-17,/pricing,Paid Search,mobile,710,380,18,0.0
+SESS-0010,2024-11-29,/checkout,Social,desktop,510,220,35,1980.5
+SESS-0011,2024-11-03,/docs,Referral,tablet,230,105,8,0.0
+SESS-0012,2024-11-10,/blog,Direct,desktop,890,520,38,0.0
+SESS-0013,2024-11-19,/signup,Organic Search,mobile,640,310,25,0.0
+SESS-0014,2024-11-25,/checkout,Paid Search,desktop,950,460,75,4125.0
+SESS-0015,2024-11-06,/home,Social,tablet,180,95,3,0.0
+SESS-0016,2024-11-14,/pricing,Referral,mobile,430,230,14,0.0
+SESS-0017,2024-11-21,/docs,Direct,desktop,720,350,28,0.0
+SESS-0018,2024-11-02,/blog,Organic Search,mobile,540,280,11,0.0
+SESS-0019,2024-11-16,/signup,Paid Search,desktop,380,195,15,0.0
+SESS-0020,2024-11-27,/checkout,Social,tablet,290,130,19,1045.0
+SESS-0021,2024-11-05,/home,Referral,mobile,620,330,22,0.0
+SESS-0022,2024-11-13,/pricing,Direct,desktop,810,420,30,0.0
+SESS-0023,2024-11-24,/docs,Organic Search,mobile,480,240,16,0.0
+SESS-0024,2024-11-09,/blog,Paid Search,desktop,920,490,44,0.0
+SESS-0025,2024-11-18,/signup,Social,tablet,150,70,6,0.0
+SESS-0026,2024-11-26,/checkout,Referral,mobile,670,320,33,1848.0
+SESS-0027,2024-11-07,/home,Direct,desktop,410,190,10,0.0
+SESS-0028,2024-11-11,/pricing,Organic Search,mobile,360,180,12,0.0
+SESS-0029,2024-11-23,/docs,Paid Search,desktop,840,430,35,0.0
+SESS-0030,2024-11-30,/checkout,Social,mobile,790,390,42,2646.0
+SESS-0031,2024-11-15,/blog,Referral,tablet,210,100,5,0.0
+SESS-0032,2024-11-02,/signup,Direct,desktop,530,260,20,0.0
+SESS-0033,2024-11-17,/home,Organic Search,mobile,660,340,25,0.0
+SESS-0034,2024-11-28,/pricing,Paid Search,desktop,980,510,48,0.0
+SESS-0035,2024-11-04,/docs,Social,tablet,170,80,6,0.0
+SESS-0036,2024-11-12,/blog,Referral,mobile,390,200,10,0.0
+SESS-0037,2024-11-21,/signup,Direct,desktop,760,370,30,0.0
+SESS-0038,2024-11-01,/checkout,Organic Search,mobile,580,290,26,1612.0
+SESS-0039,2024-11-19,/home,Paid Search,desktop,490,230,15,0.0
+SESS-0040,2024-11-25,/pricing,Social,tablet,310,150,11,0.0
+SESS-0041,2024-11-06,/docs,Referral,mobile,610,310,21,0.0
+SESS-0042,2024-11-14,/blog,Direct,desktop,830,440,32,0.0
+SESS-0043,2024-11-22,/signup,Organic Search,mobile,520,250,18,0.0
+SESS-0044,2024-11-08,/checkout,Paid Search,desktop,740,360,38,2318.0
+SESS-0045,2024-11-16,/home,Social,tablet,220,110,7,0.0
+SESS-0046,2024-11-27,/pricing,Referral,mobile,460,240,15,0.0
+SESS-0047,2024-11-03,/docs,Direct,desktop,680,330,25,0.0
+SESS-0048,2024-11-10,/blog,Organic Search,mobile,590,300,16,0.0
+SESS-0049,2024-11-20,/signup,Paid Search,desktop,420,210,14,0.0
+SESS-0050,2024-11-29,/checkout,Social,tablet,340,160,22,1254.0
